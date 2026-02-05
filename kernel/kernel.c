@@ -80,13 +80,33 @@ void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
     terminal_buffer[index] = vga_entry(c, color);
 }
 
+// Scroll the entire screen up by one line
+// Copy every line up by one row, then clear the last row (fill with spaces)
+// Since we're writing to 0xB8000, the screen updates instantly as we copy
+void terminal_scroll(void) {
+    // Move each row up by one: copy row 1 to row 0, row 2 to row 1, etc.
+    for (size_t y = 0; y < VGA_HEIGHT; y++) {
+        for (size_t x = 0; x < VGA_WIDTH; x++) {
+            const size_t dst = y * VGA_WIDTH + x; // destination: current row
+            const size_t src = (y + 1) * VGA_WIDTH + x; // source: next row down
+            terminal_buffer[dst] = terminal_buffer[src];
+        }
+    }
+    // Clear last row
+    for (size_t x = 0; x < VGA_WIDTH; x++) {
+        const size_t index = (VGA_HEIGHT - 1) * VGA_WIDTH + x;
+        terminal_buffer[index] = vga_entry(' ', terminal_color);
+    }
+}
+
 void terminal_putchar(char c) {
     // Handle newline: move to the beginning of the next line
     // instead of trying to display '\n' as a visible char
     if (c == '\n') {
         terminal_column = 0;
         if (++terminal_row == VGA_HEIGHT) {
-            terminal_row = 0; // still wrapping for now, scrolling comes next
+            terminal_scroll(); 
+            terminal_row = VGA_HEIGHT - 1;
         }
         return;
     }
@@ -96,7 +116,8 @@ void terminal_putchar(char c) {
     if (++terminal_column == VGA_WIDTH) {
         terminal_column = 0;
         if (++terminal_row == VGA_HEIGHT) {
-            terminal_row = 0;
+            terminal_scroll();
+            terminal_row = VGA_HEIGHT - 1;
         }
     }
 }
@@ -115,7 +136,12 @@ void terminal_writestring(const char* data) {
 
 void kernel_main(void) {
     terminal_initialize();
-    terminal_writestring("Hello World!\nBooting TupleOS...\nPhase 0 Complete!");
+    terminal_writestring("Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n");
+    terminal_writestring("Line 6\nLine 7\nLine 8\nLine 9\nLine 10\n");
+    terminal_writestring("Line 11\nLine 12\nLine 13\nLine 14\nLine 15\n");
+    terminal_writestring("Line 16\nLine 17\nLine 18\nLine 19\nLine 20\n");
+    terminal_writestring("Line 21\nLine 22\nLine 23\nLine 24\nLine 25\n");
+    terminal_writestring("Line 26 - this should have scrolled!");
 }
 
 // Entry point from boot.asm
