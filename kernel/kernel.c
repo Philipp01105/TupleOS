@@ -81,11 +81,20 @@ void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
 }
 
 void terminal_putchar(char c) {
+    // Handle newline: move to the beginning of the next line
+    // instead of trying to display '\n' as a visible char
+    if (c == '\n') {
+        terminal_column = 0;
+        if (++terminal_row == VGA_HEIGHT) {
+            terminal_row = 0; // still wrapping for now, scrolling comes next
+        }
+        return;
+    }
+
     terminal_putentryat(c, terminal_color, terminal_column, terminal_row);
     // After placing a char, advance the cursor, wrapping to next line if needed
     if (++terminal_column == VGA_WIDTH) {
         terminal_column = 0;
-        // THIS IS BADDDDDD but for now we just wrap to top instead of scrolling, later we will implement scrolling
         if (++terminal_row == VGA_HEIGHT) {
             terminal_row = 0;
         }
@@ -106,7 +115,7 @@ void terminal_writestring(const char* data) {
 
 void kernel_main(void) {
     terminal_initialize();
-    terminal_writestring("Hello World!");
+    terminal_writestring("Hello World!\nBooting TupleOS...\nPhase 0 Complete!");
 }
 
 // Entry point from boot.asm
