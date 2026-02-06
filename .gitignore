@@ -6,3 +6,6 @@ iso/
 *.o
 *.bin
 *.iso
+
+#md
+legacy-roadmap.md

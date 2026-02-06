@@ -32,7 +32,7 @@ static int bitmap_test(uint32_t frame) {
 // Find first free frame
 static int bitmap_first_free(void) {
     for (uint32_t i = 0; i < total_frames / 8; i++) {
-        if (frame_bitmap[1] != 0xFF) {
+        if (frame_bitmap[i] != 0xFF) {
             // At least one bit is free in this byte
             for (int j = 0; j < 8; j++) {
                 if (!(frame_bitmap[i] & (1 << j))) {

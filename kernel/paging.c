@@ -6,9 +6,8 @@
 // Contains 1024 entires, each pointing to a page table
 static page_dir_entry_t page_directory[PAGE_ENTRIES] __attribute__((aligned(4096)));
 
-// We'll allocate page tables dynamically, but keep one for the first 4MB
-// This maps virtual 0x00000000-0x003FFFFF to physical 0x00000000-0x003FFFFF
-static page_table_entry_t first_page_table[PAGE_ENTRIES] __attribute__((aligned(4096)));
+// Page tables for first 16MB (4 tablex x 4MB each)
+static page_table_entry_t page_tables[4][PAGE_ENTRIES] __attribute__((aligned(4096)));
 
 // Pointer to curr page dir (physical addr)
 static page_dir_entry_t* current_page_directory = NULL;
@@ -32,24 +31,21 @@ void paging_flush_tlb(uint32_t virtual_addr) {
 
 void paging_init(void) {
     kprintf("Paging: Initializing...\n");
-
     // clear the page dir
     for (int i = 0; i < PAGE_ENTRIES; i++) {
         // Not present, read/write, supervisor only
         page_directory[i] = 0x00000002; // R/W but not present
     }
 
-    // Identity map the first 4MB using first_page_table
-    // This covers kernel code, VGA memory (0xB8000), stack, etc.
-    for (int i = 0; i < PAGE_ENTRIES; i++) {
-        // Map virtual addr i*4096 to physical addr i*4096
-        // Present + Read/Write + Supervisor
-        first_page_table[i] = (i * PAGE_SIZE) | PAGE_PRESENT | PAGE_WRITE;
+    // Identity map first 16MB (4 page tables, 4MB each)
+    for (int t = 0; t < 4; t++) {
+        for (int i = 0; i < PAGE_ENTRIES; i++) {
+            uint32_t addr = (t * PAGE_ENTRIES + i) * PAGE_SIZE;
+            page_tables[t][i] = addr | PAGE_PRESENT | PAGE_WRITE;
+        }
+        page_directory[t] = ((uint32_t)page_tables[t]) | PAGE_PRESENT | PAGE_WRITE;
     }
 
-    // Point page directory entry 0 to our first page table
-    // This maps virtual 0x00000000 - 0x003FFFFFF
-    page_directory[0] = ((uint32_t)first_page_table | PAGE_PRESENT | PAGE_WRITE);
 
     // Store current page dir
     current_page_directory = page_directory;
@@ -60,7 +56,7 @@ void paging_init(void) {
     // Enable paging
     paging_enable();
 
-    kprintf("Paging: Enabled, first 4MB identity mapped\n");
+    kprintf("Paging: Enabled, first 16MB identity mapped\n");
 }
 
 void paging_map_page(uint32_t virtual_addr, uint32_t physical_addr, uint32_t flags) {
