@@ -69,7 +69,8 @@ OBJS = $(BUILD_DIR)/boot.o \
        $(BUILD_DIR)/idt.o \
        $(BUILD_DIR)/keyboard.o \
 	   $(BUILD_DIR)/timer.o \
-	   $(BUILD_DIR)/shell.o
+	   $(BUILD_DIR)/shell.o \
+	   $(BUILD_DIR)/kprintf.o
 
 # BUILD RULES 
 
@@ -157,6 +158,11 @@ $(BUILD_DIR)/timer.o: kernel/timer.c
 
 # Shell
 $(BUILD_DIR)/shell.o: kernel/shell.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# kprintf implementation
+$(BUILD_DIR)/kprintf.o: kernel/kprintf.c
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 

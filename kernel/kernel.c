@@ -8,6 +8,7 @@
 #include "timer.h"
 #include "shell.h"
 #include "ports.h"
+#include "kprintf.h"
 
 // Make good comments, and good commits
 
@@ -132,6 +133,7 @@ void terminal_putchar(char c) {
             terminal_row = VGA_HEIGHT - 1;
         }
     }
+    terminal_update_cursor();
 }
 
 // Prints multiple characters
@@ -180,12 +182,15 @@ void kernel_main(void) {
     terminal_writestring("Keyboard Initialized\n");
     terminal_writestring("Kernel initialization complete!\n");
     timer_init(100);
+    kprintf("Timer initialized at 100 Hz\n");
+    kprintf("Welcome to TupleOS!\n");
+    kprintf("Ticks: %u\n", timer_get_ticks());
+    kprintf("Hex: 0x%x\n", 255);
     shell_init();
     
 
     while (1) {
         __asm__ volatile("hlt");
-        terminal_update_cursor();
     }
 }
 
