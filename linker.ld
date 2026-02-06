@@ -36,4 +36,7 @@ SECTIONS
     *(COMMON)
     *(.bss)
 }
+
+/* Mark the end of the kernel, used by PMM to know where free memory starts */
+_kernel_end = .;
 }

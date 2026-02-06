@@ -10,6 +10,9 @@
 #include "ports.h"
 #include "kprintf.h"
 #include "serial.h"
+#include "multiboot.h"
+#include "pmm.h"
+#include "paging.h"
 
 // Make good comments, and good commits
 
@@ -170,7 +173,7 @@ static void terminal_print_int(uint32_t num) {
     }
 }
 
-void kernel_main(void) {
+void kernel_main(uint32_t magic, multiboot_info_t* mbi) {
     terminal_initialize();
     serial_init();
     serial_printf("Serial port initialized\n");
@@ -187,16 +190,25 @@ void kernel_main(void) {
     terminal_writestring("Kernel initialization complete!\n");
     timer_init(100);
     kprintf("Timer initialized at 100 Hz\n");
+
+    // Verify multiboot magic and initialize PMM
+    if (magic != MULTIBOOT_MAGIC) {
+        kprintf("ERROR: Invalid multiboot magic: 0x%x\n", magic);
+    } else {
+        kprintf("Multiboot magic OK: 0x%x\n", magic);
+        pmm_init(mbi);
+        paging_init();
+        kprintf("Free memory: %u KB\n", pmm_get_free_memory() / 1024);
+    }
+
     kprintf("Welcome to TupleOS!\n");
-    kprintf("Ticks: %u\n", timer_get_ticks());
-    kprintf("Hex: 0x%x\n", 255);
     shell_init();
-    
 
     while (1) {
         __asm__ volatile("hlt");
     }
 }
+
 
 // Entry point from boot.asm
 // 1: Initialize terminal (clear screen, set up state)

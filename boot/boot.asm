@@ -34,6 +34,8 @@ _start:
 # There are no security restrictions, nosafeguards, no debugging mechanisms, only what the kernel provides itself. It has absolute and complete power over the machine.
 # To set up a stack, we set the esp register to point to the top of the stack (as it grows downards on x86 systems). This is necessarily done in assembly as languages such as C can't function without a stack.
 mov $stack_top, %esp
+push %ebx # multiboot info pointer (GRUB puts it in EBX)
+push %eax # multiboot magic number
 
 # This is a good place to initialize crucial processor state before the high-level kernel is entered. It's best to minimize the early environment where crucial features are offline. Note that the processor is not fully initialized yet.
 # Features such as floating point instructions and instruction set extensions are not initialized yet. The GDT should be loaded here. Paging should be enabled here.

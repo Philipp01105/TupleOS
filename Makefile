@@ -71,7 +71,11 @@ OBJS = $(BUILD_DIR)/boot.o \
 	   $(BUILD_DIR)/timer.o \
 	   $(BUILD_DIR)/shell.o \
 	   $(BUILD_DIR)/kprintf.o \
-	   $(BUILD_DIR)/serial.o
+	   $(BUILD_DIR)/serial.o \
+	   $(BUILD_DIR)/pmm.o \
+	   $(BUILD_DIR)/pmm.o \
+       $(BUILD_DIR)/paging.o
+
 
 # BUILD RULES 
 
@@ -169,6 +173,16 @@ $(BUILD_DIR)/kprintf.o: kernel/kprintf.c
 
 # Serial port driver
 $(BUILD_DIR)/serial.o: kernel/serial.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Physical memory manager
+$(BUILD_DIR)/pmm.o: kernel/pmm.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Paging
+$(BUILD_DIR)/paging.o: kernel/paging.c
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
