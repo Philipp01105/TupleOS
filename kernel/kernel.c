@@ -9,6 +9,7 @@
 #include "shell.h"
 #include "ports.h"
 #include "kprintf.h"
+#include "serial.h"
 
 // Make good comments, and good commits
 
@@ -171,6 +172,9 @@ static void terminal_print_int(uint32_t num) {
 
 void kernel_main(void) {
     terminal_initialize();
+    serial_init();
+    serial_printf("Serial port initialized\n");
+    serial_printf("Timer ticks: %u\n", timer_get_ticks());
     terminal_writestring("Initalizing GDT\n");
     gdt_init();
     terminal_writestring("GDT Initialized\n");

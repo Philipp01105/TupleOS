@@ -70,7 +70,8 @@ OBJS = $(BUILD_DIR)/boot.o \
        $(BUILD_DIR)/keyboard.o \
 	   $(BUILD_DIR)/timer.o \
 	   $(BUILD_DIR)/shell.o \
-	   $(BUILD_DIR)/kprintf.o
+	   $(BUILD_DIR)/kprintf.o \
+	   $(BUILD_DIR)/serial.o
 
 # BUILD RULES 
 
@@ -166,11 +167,16 @@ $(BUILD_DIR)/kprintf.o: kernel/kprintf.c
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Serial port driver
+$(BUILD_DIR)/serial.o: kernel/serial.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Run the OS in QEMU (a PC emulator)
 # -cdrom: boot from our ISO as if it were a CD-ROM drive
 # This is how you test without real hardware!
 run: $(ISO)
-	qemu-system-i386 -cdrom $(ISO)
+	qemu-system-i386 -cdrom $(ISO) -serial stdio
 
 # Clean up all generated files
 # rm -rf: force remove recursively
