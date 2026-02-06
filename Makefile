@@ -67,7 +67,9 @@ OBJS = $(BUILD_DIR)/boot.o \
        $(BUILD_DIR)/kernel.o \
        $(BUILD_DIR)/gdt.o \
        $(BUILD_DIR)/idt.o \
-       $(BUILD_DIR)/keyboard.o
+       $(BUILD_DIR)/keyboard.o \
+	   $(BUILD_DIR)/timer.o \
+	   $(BUILD_DIR)/shell.o
 
 # BUILD RULES 
 
@@ -145,6 +147,16 @@ $(BUILD_DIR)/idt.o: kernel/idt.c
 
 # Keyboard driver
 $(BUILD_DIR)/keyboard.o: kernel/keyboard.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Timer driver
+$(BUILD_DIR)/timer.o: kernel/timer.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Shell
+$(BUILD_DIR)/shell.o: kernel/shell.c
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 

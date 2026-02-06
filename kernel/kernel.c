@@ -5,6 +5,9 @@
 #include "keyboard.h"
 #include "gdt.h"
 #include "idt.h"
+#include "timer.h"
+#include "shell.h"
+#include "ports.h"
 
 // Make good comments, and good commits
 
@@ -57,6 +60,18 @@ void terminal_setcolor(uint8_t color) {
     terminal_color = color;
 }
 
+void terminal_update_cursor(void) {
+    uint16_t pos = terminal_row * VGA_WIDTH + terminal_column;
+
+    // The VGA hardware cursor is controlled by IO ports 0x3D4 and 0x3D5
+    // 0x3D4 = control register, 0x3D5 = data register
+
+    outb(0x3D4, 0x0F); // Tell VGA we want to set the low byte of the cursor position
+    outb(0x3D5, (uint8_t)(pos & 0xFF)); // Send the low byte of the position
+    outb(0x3D4, 0x0E); // Tell VGA we want to set the high byte of the cursor position
+    outb(0x3D5, (uint8_t)((pos >> 8) & 0xFF)); // Send the high byte of the position
+}
+
 // function to put single character at (x, y) with given color
 void terminal_putentryat(char c, uint8_t color, size_t x, size_t y) {
     const size_t index = y * VGA_WIDTH + x;
@@ -83,6 +98,20 @@ void terminal_scroll(void) {
 }
 
 void terminal_putchar(char c) {
+    // Handle backspace: move cursor back and erase char
+    if (c == '\b') {
+        if (terminal_column > 0) {
+            terminal_column--;
+        } else if (terminal_row > 0) {
+            terminal_row--;
+            terminal_column = VGA_WIDTH - 1;
+        }
+        // Erase the char at the new cursor pos
+        terminal_putentryat(' ', terminal_color, terminal_column, terminal_row);
+        terminal_update_cursor();
+        return;
+    }
+
     // Handle newline: move to the beginning of the next line
     // instead of trying to display '\n' as a visible char
     if (c == '\n') {
@@ -117,6 +146,27 @@ void terminal_writestring(const char* data) {
     terminal_write(data, strlen(data));
 }
 
+static void terminal_print_int(uint32_t num) {
+    if (num == 0) {
+        terminal_putchar('0');
+        return;
+    }
+
+    char buffer[12]; // enough for 32-bit int
+    int i = 0;
+
+    // Convert integer to string in reverse order
+    while (num > 0) {
+        buffer[i++] = '0' + (num % 10);
+        num /= 10;
+    }
+
+    // Print the string in correct order
+    for (int j = i - 1; j >= 0; j--) {
+        terminal_putchar(buffer[j]);
+    }
+}
+
 void kernel_main(void) {
     terminal_initialize();
     terminal_writestring("Initalizing GDT\n");
@@ -129,9 +179,13 @@ void kernel_main(void) {
     keyboard_init();
     terminal_writestring("Keyboard Initialized\n");
     terminal_writestring("Kernel initialization complete!\n");
+    timer_init(100);
+    shell_init();
+    
 
     while (1) {
         __asm__ volatile("hlt");
+        terminal_update_cursor();
     }
 }
 

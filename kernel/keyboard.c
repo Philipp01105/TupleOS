@@ -2,6 +2,9 @@
 #include "ports.h"
 #include "idt.h"
 #include "terminal.h"
+#include "shell.h"
+
+#include <stdbool.h>
 
 /*
 * Flow:
@@ -17,95 +20,33 @@
 
 #define KEYBOARD_DATA_PORT 0x60
 
+#define LEFT_SHIFT_PRESSED 0x2A
+#define LEFT_SHIFT_RELEASED 0xAA
+#define RIGHT_SHIFT_PRESSED 0x36
+#define RIGHT_SHIFT_RELEASED 0xB6
+
+static bool shift_held = false;
+
+// Lowercase / unshifted characters
 static const char scancode_to_ascii[128] = {
-    0,
-    0,
-    '1',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    '0',
-    '-',
-    '=',
-    '\b', // Backspace
-    '\t', // Tab
-    'q',
-    'w',
-    'e',
-    'r',
-    't',
-    'y',
-    'u',
-    'i',
-    'o',
-    'p',
-    '[',
-    ']',
-    '\n', // Enter
-    0, // Left Ctrl
-    'a',
-    's',
-    'd',
-    'f',
-    'g',
-    'h',
-    'j',
-    'k',
-    'l',
-    ';',
-    '\'',
-    '`',
-    0, // Left Shift
-    '\\',
-    'z',
-    'x',
-    'c',
-    'v',
-    'b',
-    'n',
-    'm',
-    ',',
-    '.',
-    '/',
-    0, // Right Shift
-    '*',
-    0, // Left Alt
-    ' ', // Space
-    0, // Caps Lock
-    0, // F1
-    0, // F2
-    0, // F3
-    0, // F4
-    0, // F5
-    0, // F6
-    0, // F7
-    0, // F8
-    0, // F9
-    0, // F10
-    0, // Num Lock
-    0, // Scroll Lock
-    '7', // Keypad 7
-    '8', // Keypad 8
-    '9', // Keypad 9
-    '-', // Keypad -
-    '4', // Keypad 4
-    '5', // Keypad 5
-    '6', // Keypad 6
-    '+', // Keypad +
-    '1', // Keypad 1
-    '2', // Keypad 2
-    '3', // Keypad 3
-    '0', // Keypad 0
-    '.', // Keypad .
-    0, 0, 0, // unused
-    0, // F11
-    0, // F12
-    // Rest are unused or extended keys, leave as 0
+    0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b', '\t',
+    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n', 0,
+    'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`', 0, '\\',
+    'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0, '*', 0, ' ', 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.',
+    0, 0, 0, 0, 0
+};
+
+// Uppercase / shifted characters
+static const char scancode_to_ascii_shifted[128] = {
+    0, 0, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '\b', '\t',
+    'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', '\n', 0,
+    'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~', 0, '|',
+    'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0, '*', 0, ' ', 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    '7', '8', '9', '-', '4', '5', '6', '+', '1', '2', '3', '0', '.',
+    0, 0, 0, 0, 0
 };
 
 static void keyboard_handler(struct interrupt_frame* frame) {
@@ -114,6 +55,16 @@ static void keyboard_handler(struct interrupt_frame* frame) {
     // Read the scancode from the keyboard controller
     uint8_t scancode = inb(KEYBOARD_DATA_PORT);
 
+    // Handle shift key presses/releases
+    if (scancode == LEFT_SHIFT_PRESSED || scancode == RIGHT_SHIFT_PRESSED) {
+        shift_held = true;
+        return;
+    }
+    if (scancode == LEFT_SHIFT_RELEASED || scancode == RIGHT_SHIFT_RELEASED) {
+        shift_held = false;
+        return;
+    }
+
     // Ignore key releases
     if (scancode & 0x80) {
         return;
@@ -121,11 +72,11 @@ static void keyboard_handler(struct interrupt_frame* frame) {
 
     // Look up the ASCII char, and make sure scancode is in bounds before indexing
     if (scancode < 128) {
-        char c = scancode_to_ascii[scancode];
+        char c = shift_held ? scancode_to_ascii_shifted[scancode] : scancode_to_ascii[scancode];
 
         // If it's a printable char, print it
         if (c != 0) {
-            terminal_putchar(c);
+            shell_handle_key(c);
         }
     }
 }
