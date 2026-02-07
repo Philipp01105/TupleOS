@@ -74,7 +74,8 @@ OBJS = $(BUILD_DIR)/boot.o \
 	   $(BUILD_DIR)/serial.o \
 	   $(BUILD_DIR)/pmm.o \
        $(BUILD_DIR)/paging.o \
-	   $(BUILD_DIR)/kheap.o
+	   $(BUILD_DIR)/kheap.o \
+	   $(BUILD_DIR)/vmm.o
 
 
 # BUILD RULES 
@@ -188,6 +189,11 @@ $(BUILD_DIR)/paging.o: kernel/paging.c
 
 # Kernel heap
 $(BUILD_DIR)/kheap.o: kernel/kheap.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Virtual memory manager
+$(BUILD_DIR)/vmm.o: kernel/vmm.c
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 

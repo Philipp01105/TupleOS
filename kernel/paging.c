@@ -124,3 +124,41 @@ uint32_t paging_get_physical(uint32_t virtual_addr) {
 
     return (table[pt_index] & 0xFFFFF000) + offset;
 }
+
+uint32_t* paging_get_directory(void) {
+    return (uint32_t*)page_directory;
+}
+
+uint32_t* paging_create_directory(void) {
+    // allocate a physical frame for the new page dir, must always be 4KB aligned, and pmm_alloc_frame always returns page aligned addresses so were good
+    uint32_t* new_dir = (uint32_t*)pmm_alloc_frame();
+    if (!new_dir) {
+        kprintf("Paging: failed to allocate new page directory\n");
+        return NULL;
+    }
+
+    // start with everything not present
+    for (int i = 0; i < PAGE_ENTRIES; i++) {
+        new_dir[i] = 0x00000002; // read/write but not present
+    }
+
+    // copy the kernel's page dir entries to this one, this is what actually amke the kernel accessible from every address space
+    for (int i = 0; i < 4; i++) {
+        new_dir[i] = page_directory[i];
+    }
+
+    // also copy any additional entries that kheap might have created, it starts at 0x400000 which is page directory index 1, and can grow up to 0x1400000 which is index 5
+    // we already copied indices 0-3 aboce, but let's check a few more to be safe
+    for (int i = 4; i < 8; i++) {
+        if (page_directory[i] & PAGE_PRESENT) {
+            new_dir[i] = page_directory[i];
+        }
+    }
+
+    return new_dir;
+}
+
+void paging_switch_directory(uint32_t* dir) {
+    current_page_directory = (page_dir_entry_t*)dir;
+    paging_load_directory((page_dir_entry_t*)dir);
+}

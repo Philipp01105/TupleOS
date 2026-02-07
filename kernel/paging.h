@@ -10,7 +10,7 @@
 #define PAGE_WRITE 0x002 // Page is writable (0 = read-only)
 #define PAGE_USER 0x004 // Page is accessible from user mode
 #define PAGE_ACCESSED 0x020 // CPU sets this when page is accessed
-#define PAGE_DIRY 0x040 // CPU sets this when page is written to
+#define PAGE_DIRTY 0x040 // CPU sets this when page is written to
 
 // # of entries in page dir and page tables
 #define PAGE_ENTRIES 1024
@@ -35,5 +35,14 @@ uint32_t paging_get_physical(uint32_t virtual_addr);
 
 // Flush TLB for a specific address
 void paging_flush_tlb(uint32_t virtual_addr);
+
+// get a pointer to the curr page dir, the VMM needs this during init so it can start tracking the dir that paging_init already set up
+uint32_t* paging_get_directory(void);
+
+// create a brand new page dir, allocates a 4KB frame for the dir, clears it out, and copies over all the kernel-space entries
+uint32_t* paging_create_directory(void);
+
+// switch the active page dir by loading a new address into CR3
+void paging_switch_directory(uint32_t* dir);
 
 #endif

@@ -14,6 +14,7 @@
 #include "pmm.h"
 #include "paging.h"
 #include "kheap.h"
+#include "vmm.h"
 
 // Make good comments, and good commits
 
@@ -200,6 +201,7 @@ void kernel_main(uint32_t magic, multiboot_info_t* mbi) {
         pmm_init(mbi);
         paging_init();
         kheap_init();
+        vmm_init();
         kprintf("Heap used: %u KB, free: %u KB\n", kheap_get_used() / 1024, kheap_get_free() / 1024);
         kprintf("Free memory: %u KB\n", pmm_get_free_memory() / 1024);
     }
