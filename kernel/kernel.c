@@ -1,3 +1,5 @@
+// BEWARE: TupleOS is 70% knowledge and 30% pure hardware magic, so beware changing anything...
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
