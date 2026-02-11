@@ -157,6 +157,7 @@ stage2_start:
 
     ; AX = first cluster of TUPLEOS.bin
     call fat16_load_file
+
     jmp .kernel_ready
 
 .no_kernel:
@@ -684,6 +685,12 @@ fat16_init:
     mov ax, [si + 0x16] ; offset 0x16: sectors per FAT
     mov [fat16_fat_size], ax
 
+    mov ax, [si + 0x18] ; offset 0x18: sectors per track
+    mov [fat16_spt], ax
+
+    mov ax, [si + 0x1A] ; offset 0x1A: number of heads
+    mov [fat16_heads], ax
+
     ; step 3: calculate derived sector positions
     ; fat_start = reserved_sectors
     ; the FAT table begins right after the reserved area
@@ -820,8 +827,10 @@ fat16_find_file:
 
     pop cx ; balance the push from .scan_sector
 
+    push ax              ; save cluster number (print_string clobbers AX)
     mov si, msg_fat16_found
     call print_string
+    pop ax               ; restore cluster number
     ret
 
 ; fat16_load_file: follow the FAT cluster chain and load the entire file into memory
@@ -944,41 +953,226 @@ pm_entry:
     ; proof of life message, we will write directly to VGA memory to prove we're in 32-bit protected mode.
     ; if we can write to 0xB8000 and see green text on screen, it means GDT is valid, the far jump worked, data segments work, and the stack is fine
 
-    ; ESI = source string address. we use ESI and not SI cause we're in 32 bit now naturally
+    ; print "[ OK ] 32-bit protected mode active!" at row 21 via direct VGA write
     mov esi, msg_pm_ok
-    ; OIKJWEFJIOWFEIWEFJIOWEFIJOWEFIJOEWIFJOJIWEOFIJOEWFIJOEWFIOJWEFIJO
-    mov edi, 0xB8000 + 3680
-
-    mov ah, 0x0A
+    mov edi, 0xB8000 + 3360        ; row 21 = 21 * 160
+    mov ah, 0x0A                   ; bright green on black
 
 .pm_print:
-    ; LODSB: load byte at [DS:ESI] into AL, then increment ESI
-    ; same instruction as 16-bit print_string but now it uses ESI
     lodsb
-
-    ; check for null term. our strings null terminated just like real mode
-    ; we can test al, al does a bitwise AND without storing the reult, so it just sets the zero flag if AL is set 0
     test al, al
-    jz .pm_halt ; end of string
-
-    ;write char to VGA
+    jz .pm_print_done
     mov [edi], ax
-
-    ; advance the EDI by 2 to point to the next VGA cell cause each cell is 2 bytes
     add edi, 2
-
-    ; loop back for the next char
     jmp .pm_print
 
+.pm_print_done:
+    ; --- ELF LOADER ---
+    ; parse the ELF binary that FAT16 loaded to 0x10000, copy PT_LOAD segments
+    ; to their physical addresses (0x100000+), zero-fill BSS, save entry point
+    call elf_load
+
+    ; kernel segments are now at 0x100000+, entry point is in [kernel_entry]
+    ; for now we halt. Step 9 will replace this with the kernel handoff
+
 .pm_halt:
-    ; we done now, later we will jump to the loaded kernel from here, for now just finna halt. 
-    ; cli is technically redundant (we already ran before switch) but it's good practice probably to halt in a loop cause it will make the intent clearer
-    ; and probably can guard against someone adding something else later
     cli
     hlt
-    ; here we catch non-maskable interrupts, if the JMP sends us back to the HLT over and over the cpu will just spin here forever
     jmp .pm_halt
 
+
+; pm_print_line: print null-terminated string to VGA at current row, advance to next row
+; Input: ESI = pointer to null-terminated string
+; Output: pm_vga_pos advanced to next row
+; Clobbers: EAX, ECX, EDX, EDI, ESI
+
+pm_print_line:
+    mov edi, [pm_vga_pos]
+    mov ah, 0x0A                   ; bright green on black
+
+.ppl_loop:
+    lodsb
+    test al, al
+    jz .ppl_done
+    mov [edi], ax
+    add edi, 2
+    jmp .ppl_loop
+
+.ppl_done:
+    ; advance pm_vga_pos to start of next row
+    ; next_row = ((pos - 0xB8000) / 160 + 1) * 160 + 0xB8000
+    mov eax, [pm_vga_pos]
+    sub eax, 0xB8000
+    xor edx, edx
+    mov ecx, 160
+    div ecx                        ; EAX = current row number
+    inc eax
+    imul eax, 160
+    add eax, 0xB8000
+    mov [pm_vga_pos], eax
+    ret
+
+
+; pm_print_hex32: print 32-bit value as 8 hex digits at EDI, advance EDI by 16
+; Input: EAX = value, EDI = VGA position
+; Output: EDI advanced past the 8 hex chars
+; Clobbers: EAX, EBX, ECX
+
+pm_print_hex32:
+    mov ebx, eax
+    mov ecx, 8
+
+.pph_loop:
+    rol ebx, 4                     ; rotate top nibble to bottom
+    mov al, bl
+    and al, 0x0F
+    add al, '0'
+    cmp al, '9'
+    jbe .pph_write
+    add al, 7                      ; 'A'-'F'
+
+.pph_write:
+    mov ah, 0x0A
+    mov [edi], ax
+    add edi, 2
+    dec ecx
+    jnz .pph_loop
+    ret
+
+
+; elf_load: parse ELF at ELF_BASE, load PT_LOAD segments to p_paddr, zero-fill BSS
+; Input: none (reads from ELF_BASE = 0x10000)
+; Output: kernel_entry populated with e_entry
+; Clobbers: everything
+
+elf_load:
+    ; --- validate ELF header ---
+
+    ; check magic: 0x7F 'E' 'L' 'F' = 0x464C457F in little-endian
+    cmp dword [ELF_BASE], 0x464C457F
+    jne .elf_bad
+
+    ; e_ident[4] = ELFCLASS32 (1)
+    cmp byte [ELF_BASE + 4], 1
+    jne .elf_bad
+
+    ; e_ident[5] = ELFDATA2LSB (1) = little-endian
+    cmp byte [ELF_BASE + 5], 1
+    jne .elf_bad
+
+    ; e_type = ET_EXEC (2)
+    cmp word [ELF_BASE + 16], 2
+    jne .elf_bad
+
+    ; e_machine = EM_386 (3)
+    cmp word [ELF_BASE + 18], 3
+    jne .elf_bad
+
+    ; --- header valid, extract fields ---
+
+    mov eax, [ELF_BASE + 24]          ; e_entry
+    mov [kernel_entry], eax
+
+    mov eax, [ELF_BASE + 28]          ; e_phoff
+    mov [elf_phoff], eax
+
+    movzx eax, word [ELF_BASE + 42]   ; e_phentsize
+    mov [elf_phentsize], ax
+
+    movzx eax, word [ELF_BASE + 44]   ; e_phnum
+    mov [elf_phnum], ax
+
+    ; --- iterate program headers, load PT_LOAD segments ---
+
+    ; EBX = pointer to first program header
+    mov ebx, [elf_phoff]
+    add ebx, ELF_BASE
+
+    ; ECX = number of headers remaining
+    movzx ecx, word [elf_phnum]
+
+.elf_phdr_loop:
+    test ecx, ecx
+    jz .elf_done
+
+    push ecx                           ; save loop counter
+    push ebx                           ; save phdr pointer
+
+    ; only process PT_LOAD (p_type == 1)
+    cmp dword [ebx + 0], 1
+    jne .elf_skip
+
+    ; --- copy p_filesz bytes from file to p_paddr ---
+
+    ; ESI = source: ELF_BASE + p_offset
+    mov esi, [ebx + 4]
+    add esi, ELF_BASE
+
+    ; EDI = destination: p_paddr
+    mov edi, [ebx + 12]
+
+    ; ECX = p_filesz
+    mov ecx, [ebx + 16]
+    cld
+    rep movsb
+
+    ; --- zero-fill BSS: p_memsz - p_filesz bytes ---
+    ; EDI already points to byte after last copied byte
+
+    mov ecx, [ebx + 20]               ; p_memsz
+    sub ecx, [ebx + 16]               ; - p_filesz
+    jbe .elf_skip                      ; no BSS (or memsz <= filesz)
+
+    xor al, al
+    rep stosb
+
+.elf_skip:
+    pop ebx
+    pop ecx
+
+    ; advance to next program header
+    movzx eax, word [elf_phentsize]
+    add ebx, eax
+    dec ecx
+    jmp .elf_phdr_loop
+
+.elf_done:
+    ; print success message with entry point to VGA
+    mov esi, msg_elf_ok
+    mov edi, [pm_vga_pos]
+    mov ah, 0x0A
+
+.elf_ok_print:
+    lodsb
+    test al, al
+    jz .elf_ok_hex
+    mov [edi], ax
+    add edi, 2
+    jmp .elf_ok_print
+
+.elf_ok_hex:
+    mov eax, [kernel_entry]
+    call pm_print_hex32
+
+    ; advance pm_vga_pos to next row
+    mov eax, [pm_vga_pos]
+    sub eax, 0xB8000
+    xor edx, edx
+    mov ecx, 160
+    div ecx
+    inc eax
+    imul eax, 160
+    add eax, 0xB8000
+    mov [pm_vga_pos], eax
+
+    ret
+
+.elf_bad:
+    mov esi, msg_elf_bad
+    call pm_print_line
+    cli
+    hlt
+    jmp .elf_bad
 
 
 
@@ -1108,6 +1302,8 @@ fat16_reserved: dw 0 ; reserved sectors count, from the start of the partition t
 fat16_num_fats: db 0 ; number of FAT tables, usually 2
 fat16_root_entries: dw 0 ; max root dir entries
 fat16_fat_size: dw 0 ; sectors per FAT table
+fat16_spt: dw 0 ; sectors per track (for CHS conversion)
+fat16_heads: dw 0 ; number of heads (for CHS conversion)
 
 ; Derived values (calculated from BPB by fat16_init)
 fat16_fat_start: dw 0 ; LBA of the first FAT table, = reserved sectors count
@@ -1143,3 +1339,20 @@ msg_fat16_found: db "FAT16: file found, loading...", 13, 10, 0
 msg_fat16_load: db "FAT16: kernel loaded to 0x10000", 13, 10, 0
 msg_fat16_nf: db "FAT16: TUPLEOS.BIN not found!", 13, 10, 0
 msg_fat16_rerr: db "FAT16: disk read error!", 13, 10, 0
+
+; ---- ELF loader data ----
+
+ELF_BASE        equ 0x10000           ; where FAT16 loaded the raw ELF file
+
+; runtime storage (populated by elf_load)
+kernel_entry:   dd 0                  ; e_entry: kernel entry point address
+elf_phoff:      dd 0                  ; e_phoff: program header table offset
+elf_phentsize:  dw 0                  ; e_phentsize: size of one phdr entry
+elf_phnum:      dw 0                  ; e_phnum: number of program headers
+
+; VGA cursor for 32-bit mode (row 22 = 22 * 160 = 3520)
+pm_vga_pos:     dd 0xB8000 + 3520
+
+; 32-bit mode status messages
+msg_elf_ok:     db "ELF: loaded, entry 0x", 0
+msg_elf_bad:    db "[FAIL] Invalid ELF binary!", 0
